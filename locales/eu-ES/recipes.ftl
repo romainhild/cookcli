@@ -61,3 +61,4 @@ sort-name = Izena
 sort-modified = Aldatua
 sort-created = Sortua
 sort-direction-toggle = Ordena aldatu
+sort-calories = Kaloriak

@@ -61,3 +61,4 @@ sort-name = Namn
 sort-modified = Ändrad
 sort-created = Skapad
 sort-direction-toggle = Byt sorteringsriktning
+sort-calories = Kalorier

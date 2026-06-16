@@ -61,3 +61,4 @@ sort-name = Name
 sort-modified = Modified
 sort-created = Created
 sort-direction-toggle = Toggle sort direction
+sort-calories = Calories

@@ -61,3 +61,4 @@ sort-name = Nombre
 sort-modified = Modificado
 sort-created = Creado
 sort-direction-toggle = Invertir orden
+sort-calories = Calorías

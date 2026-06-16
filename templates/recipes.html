@@ -38,6 +38,7 @@
             <option value="name">{{ tr.t("sort-name") }}</option>
             <option value="modified">{{ tr.t("sort-modified") }}</option>
             <option value="created" id="sort-created-option">{{ tr.t("sort-created") }}</option>
+            <option value="calories">{{ tr.t("sort-calories") }}</option>
         </select>
         <button id="sort-dir" class="px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors" title="{{ tr.t("sort-direction-toggle") }}">↑</button>
     </div>
@@ -86,6 +87,7 @@
            data-type="recipe"
            {% if let Some(ts) = item.modified_at %}data-modified="{{ ts }}"{% endif %}
            {% if let Some(ts) = item.created_at %}data-created="{{ ts }}"{% endif %}
+           {% if let Some(cal) = item.calories %}data-calories="{{ cal }}"{% endif %}
            class="bg-white rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition-all hover:scale-105 recipe-card flex flex-col">
             {% match item.image_path %}
             {% when Some with (img) %}
@@ -163,9 +165,19 @@
         controls.classList.add('flex');
     }
 
+    function getName(el) {
+        return (el.querySelector('h3')?.textContent ?? '').trim().toLowerCase();
+    }
+
     function getValue(el) {
         if (sortField === 'name') {
-            return (el.querySelector('h3')?.textContent ?? '').trim().toLowerCase();
+            return getName(el);
+        }
+        if (sortField === 'calories') {
+            const raw = el.getAttribute('data-calories');
+            if (raw === null) return null;
+            const n = parseFloat(raw);
+            return Number.isNaN(n) ? null : n;
         }
         const attr = sortField === 'modified' ? 'data-modified' : 'data-created';
         const raw = el.getAttribute(attr);
@@ -183,10 +195,15 @@
         recipes.sort((a, b) => {
             const av = getValue(a);
             const bv = getValue(b);
-            if (av === null && bv === null) return 0;
+            if (av === null && bv === null) return getName(a).localeCompare(getName(b));
             if (av === null) return 1;
             if (bv === null) return -1;
-            const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
+            let cmp;
+            if (typeof av === 'string') {
+                cmp = av.localeCompare(bv);
+            } else {
+                cmp = av !== bv ? av - bv : getName(a).localeCompare(getName(b));
+            }
             return sortDir === 'asc' ? cmp : -cmp;
         });
 
@@ -199,8 +216,8 @@
 
     fieldSelect.addEventListener('change', function () {
         sortField = this.value;
-        // Default to desc for date sorts (newest first), asc for name
-        sortDir = sortField === 'name' ? 'asc' : 'desc';
+        // Default to desc for date sorts (newest first), asc for name and calories
+        sortDir = sortField === 'modified' || sortField === 'created' ? 'desc' : 'asc';
         applySort();
     });
 

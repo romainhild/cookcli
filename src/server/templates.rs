@@ -489,6 +489,7 @@ pub struct RecipeItem {
     pub is_menu: bool,
     pub modified_at: Option<u64>,
     pub created_at: Option<u64>,
+    pub calories: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]

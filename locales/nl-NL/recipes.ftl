@@ -61,3 +61,4 @@ sort-name = Naam
 sort-modified = Gewijzigd
 sort-created = Aangemaakt
 sort-direction-toggle = Sorteervolgorde omdraaien
+sort-calories = Calorieën

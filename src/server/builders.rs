@@ -64,8 +64,8 @@ pub fn build_recipes_template(input: RecipesBuildInput<'_>) -> Result<RecipesTem
             }
         };
 
-        // Extract tags, image, is_menu, and file timestamps if this is a recipe
-        let (tags, image_path, is_menu, modified_at, created_at) =
+        // Extract tags, image, is_menu, file timestamps, and calories if this is a recipe
+        let (tags, image_path, is_menu, modified_at, created_at, calories) =
             if let Some(ref recipe) = child.recipe {
                 let img_path = recipe.title_image().clone().and_then(|img| {
                     if img.starts_with("http://") || img.starts_with("https://") {
@@ -103,15 +103,18 @@ pub fn build_recipes_template(input: RecipesBuildInput<'_>) -> Result<RecipesTem
                     })
                     .unwrap_or((None, None));
 
+                let calories = extract_calories(recipe.metadata());
+
                 (
                     recipe.tags(),
                     img_path,
                     recipe.is_menu(),
                     modified_at,
                     created_at,
+                    calories,
                 )
             } else {
-                (Vec::new(), None, false, None, None)
+                (Vec::new(), None, false, None, None, None)
             };
 
         items.push(RecipeItem {
@@ -129,6 +132,7 @@ pub fn build_recipes_template(input: RecipesBuildInput<'_>) -> Result<RecipesTem
             is_menu,
             modified_at,
             created_at,
+            calories,
         });
     }
 
@@ -1053,6 +1057,30 @@ fn get_image_path(base_path: &Utf8Path, prefix: &str, img_path: String) -> Optio
                 .map(|name| format!("{prefix}/api/static/{name}"))
         }
     }
+}
+
+fn extract_calories(metadata: &cooklang_find::Metadata) -> Option<f64> {
+    // Try nested nutrition.calories first, then flat calories key
+    let value = metadata
+        .get("nutrition")
+        .and_then(|v| v.as_mapping())
+        .and_then(|m| m.get("calories"))
+        .or_else(|| metadata.get("calories"))?;
+
+    if let Some(n) = value.as_i64() {
+        return Some(n as f64);
+    }
+    if let Some(n) = value.as_f64() {
+        return Some(n);
+    }
+    // Handle string values like "300 kcal" by parsing the leading number
+    if let Some(s) = value.as_str() {
+        return s
+            .split_whitespace()
+            .next()
+            .and_then(|tok| tok.parse::<f64>().ok());
+    }
+    None
 }
 
 const NUTRITION_KEYS: &[&str] = &[
