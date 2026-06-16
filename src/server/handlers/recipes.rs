@@ -1,10 +1,11 @@
 use crate::{server::AppState, util::PARSER};
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Multipart, Path, Query, State},
     http::StatusCode,
     Json,
 };
 use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
+use image::ImageFormat;
 use cooklang_find;
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -289,6 +290,25 @@ pub async fn search(
     Ok(Json(results))
 }
 
+pub(crate) fn process_image(bytes: &[u8]) -> Result<(Vec<u8>, &'static str), anyhow::Error> {
+    let format = image::guess_format(bytes)
+        .map_err(|e| anyhow::anyhow!("Cannot detect image format: {e}"))?;
+
+    match format {
+        ImageFormat::Jpeg => Ok((bytes.to_vec(), "jpg")),
+        ImageFormat::Png => Ok((bytes.to_vec(), "png")),
+        ImageFormat::WebP => Ok((bytes.to_vec(), "webp")),
+        _ => {
+            let img = image::load_from_memory(bytes)
+                .map_err(|e| anyhow::anyhow!("Cannot decode image: {e}"))?;
+            let mut buf = Vec::new();
+            img.write_to(&mut std::io::Cursor::new(&mut buf), ImageFormat::Jpeg)
+                .map_err(|e| anyhow::anyhow!("Cannot encode image as JPEG: {e}"))?;
+            Ok((buf, "jpg"))
+        }
+    }
+}
+
 pub async fn recipe_delete(
     Path(path): Path<String>,
     State(state): State<Arc<AppState>>,
@@ -332,4 +352,138 @@ pub async fn recipe_delete(
         "status": "success",
         "path": path
     })))
+}
+
+pub async fn recipe_image_upload(
+    Path(path): Path<String>,
+    State(state): State<Arc<AppState>>,
+    mut multipart: Multipart,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    check_path(&path)?;
+
+    let recipe_path = state.base_path.join(&path);
+
+    let file_path = if recipe_path.exists() {
+        recipe_path
+    } else {
+        let cook_path = Utf8PathBuf::from(format!("{}.cook", recipe_path));
+        let menu_path = Utf8PathBuf::from(format!("{}.menu", recipe_path));
+        if cook_path.exists() {
+            cook_path
+        } else if menu_path.exists() {
+            menu_path
+        } else {
+            return Err((
+                StatusCode::NOT_FOUND,
+                json_error(format!("Recipe not found: {path}")),
+            ));
+        }
+    };
+
+    let stem = file_path.file_stem().ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            json_error("Invalid recipe path"),
+        )
+    })?;
+    let dir = file_path
+        .parent()
+        .unwrap_or(state.base_path.as_path());
+
+    let field = multipart
+        .next_field()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                json_error(format!("Failed to read upload: {e}")),
+            )
+        })?
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, json_error("No file in upload")))?;
+
+    let bytes = field.bytes().await.map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            json_error(format!("Failed to read file bytes: {e}")),
+        )
+    })?;
+
+    let (image_bytes, ext) = process_image(&bytes).map_err(|e| {
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            json_error(e.to_string()),
+        )
+    })?;
+
+    // Remove any existing same-stem images to avoid stale files taking priority
+    for old_ext in ["jpg", "jpeg", "png", "webp"] {
+        let old_path = dir.join(format!("{stem}.{old_ext}"));
+        if old_path.exists() {
+            tokio::fs::remove_file(&old_path).await.ok();
+        }
+    }
+
+    let image_path = dir.join(format!("{stem}.{ext}"));
+    tokio::fs::write(&image_path, &image_bytes)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to write image {}: {}", image_path, e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json_error(format!("Failed to save image: {e}")),
+            )
+        })?;
+
+    tracing::info!("Saved image: {}", image_path);
+
+    Ok(Json(serde_json::json!({
+        "status": "success",
+        "path": path
+    })))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn process_image_keeps_jpeg_unchanged() {
+        // Minimal JPEG magic bytes (we only need format detection, not decoding)
+        let jpeg_bytes = vec![0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00];
+        let (out, ext) = process_image(&jpeg_bytes).unwrap();
+        assert_eq!(ext, "jpg");
+        assert_eq!(out, jpeg_bytes);
+    }
+
+    #[test]
+    fn process_image_keeps_png_unchanged() {
+        // Minimal PNG magic bytes
+        let png_bytes = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00];
+        let (out, ext) = process_image(&png_bytes).unwrap();
+        assert_eq!(ext, "png");
+        assert_eq!(out, png_bytes);
+    }
+
+    #[test]
+    fn process_image_converts_bmp_to_jpeg() {
+        // Create a valid 1x1 BMP image using the image crate itself
+        let img = image::DynamicImage::new_rgb8(1, 1);
+        let mut bmp_bytes = Vec::new();
+        img.write_to(
+            &mut std::io::Cursor::new(&mut bmp_bytes),
+            image::ImageFormat::Bmp,
+        )
+        .unwrap();
+
+        let (out, ext) = process_image(&bmp_bytes).unwrap();
+        assert_eq!(ext, "jpg");
+        // JPEG output starts with FF D8
+        assert_eq!(&out[0..2], &[0xFF, 0xD8]);
+    }
+
+    #[test]
+    fn process_image_rejects_invalid_bytes() {
+        let garbage = vec![0x00, 0x01, 0x02, 0x03];
+        assert!(process_image(&garbage).is_err());
+    }
 }

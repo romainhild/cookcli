@@ -33,7 +33,8 @@ anstyle-yansi = "2"
 anyhow = "1"
 askama = { version = "0.12", features = ["serde-json"] }
 askama_axum = "0.4"
-axum = { version = "0.7", features = ["ws"] }
+axum = { version = "0.7", features = ["ws", "multipart"] }
+image = "0.25"
 camino = { version = "1", features = ["serde1"] }
 chrono = "0.4"
 clap = { version = "4.5", features = ["derive"] }

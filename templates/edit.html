@@ -17,6 +17,13 @@
         </div>
         <div class="flex items-center gap-3">
             <span id="save-status" class="text-sm text-gray-500"></span>
+            <button onclick="triggerImageUpload()" id="upload-image-btn" data-uploading="{{ tr.t("action-uploading") }}" class="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors flex items-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+                {{ tr.t("action-upload-image") }}
+            </button>
+            <input type="file" id="image-file-input" accept="image/*" class="hidden">
             <button onclick="showDeleteModal()" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center gap-2">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
@@ -467,6 +474,42 @@ window.CooklangEditor.setCompletionResolver(async (line, character) => {
             resolve([]);
         }
     });
+});
+
+function triggerImageUpload() {
+    document.getElementById('image-file-input').click();
+}
+
+document.getElementById('image-file-input').addEventListener('change', async function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    const btn = document.getElementById('upload-image-btn');
+    const originalHTML = btn.innerHTML;
+    btn.textContent = btn.dataset.uploading;
+    btn.disabled = true;
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    try {
+        const response = await fetch(
+            `{{ prefix }}/api/recipes/image/${encodeURIComponent(recipePath)}`,
+            { method: 'POST', body: formData }
+        );
+        if (response.ok) {
+            showToast('Image saved', 'success');
+        } else {
+            const text = await response.text();
+            showToast(`Upload failed: ${text || 'Unknown error'}`);
+        }
+    } catch (e) {
+        showToast(`Upload failed: ${e.message}`);
+    } finally {
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+        this.value = '';
+    }
 });
 
 </script>
