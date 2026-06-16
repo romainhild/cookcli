@@ -453,8 +453,7 @@ fn api(_state: &AppState) -> Result<Router<Arc<AppState>>> {
         .route("/recipes/raw/*path", get(handlers::recipe_raw)) // More specific route must come first
         .route(
             "/recipes/image/*path",
-            post(handlers::recipe_image_upload)
-                .layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+            post(handlers::recipe_image_upload).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
         ) // More specific route must come first
         .route(
             "/recipes/*path",

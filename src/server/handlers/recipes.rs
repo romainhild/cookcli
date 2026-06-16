@@ -5,8 +5,8 @@ use axum::{
     Json,
 };
 use camino::{Utf8Component, Utf8Path, Utf8PathBuf};
-use image::ImageFormat;
 use cooklang_find;
+use image::ImageFormat;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::sync::Arc;
@@ -386,9 +386,7 @@ pub async fn recipe_image_upload(
             json_error("Invalid recipe path"),
         )
     })?;
-    let dir = file_path
-        .parent()
-        .unwrap_or(state.base_path.as_path());
+    let dir = file_path.parent().unwrap_or(state.base_path.as_path());
 
     let field = multipart
         .next_field()
@@ -408,12 +406,8 @@ pub async fn recipe_image_upload(
         )
     })?;
 
-    let (image_bytes, ext) = process_image(&bytes).map_err(|e| {
-        (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            json_error(e.to_string()),
-        )
-    })?;
+    let (image_bytes, ext) = process_image(&bytes)
+        .map_err(|e| (StatusCode::UNPROCESSABLE_ENTITY, json_error(e.to_string())))?;
 
     // Remove any existing same-stem images to avoid stale files taking priority
     for old_ext in ["jpg", "jpeg", "png", "webp"] {
@@ -449,7 +443,9 @@ mod tests {
     #[test]
     fn process_image_keeps_jpeg_unchanged() {
         // Minimal JPEG magic bytes (we only need format detection, not decoding)
-        let jpeg_bytes = vec![0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00];
+        let jpeg_bytes = vec![
+            0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00,
+        ];
         let (out, ext) = process_image(&jpeg_bytes).unwrap();
         assert_eq!(ext, "jpg");
         assert_eq!(out, jpeg_bytes);
